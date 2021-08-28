@@ -282,6 +282,10 @@ int main(int argc, char* argv[])
   uint8_t workdim = w*h*c;
   //size_t work_dim[] = {w*h*c, 0, 0};
   size_t work_dim[] = {w, h, 1};
+
+  // O cl_event é iniciado aqui, mas é parte da estrutura para fazer o profiling
+  cl_event event;
+
   clerr = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, work_dim, NULL, 0, NULL, NULL);
   if(clerr != CL_SUCCESS)
   {
@@ -294,7 +298,7 @@ int main(int argc, char* argv[])
   cl_bool b = CL_TRUE;
   size_t origin[] = {0,0,0};
   //  clerr = clEnqueueReadImage(queue, image_dest, f, origin, work_dim, w*sizeof(uint8_t), 0, arr, 0, NULL, NULL);
-  clerr = clEnqueueReadImage(queue, image_dest, b, origin, work_dim, 0, 0, arr, 0, NULL, NULL);
+  clerr = clEnqueueReadImage(queue, image_dest, b, origin, work_dim, 0, 0, arr, 0, NULL, &event);
   if(clerr != CL_SUCCESS)
   {
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-3);
@@ -303,14 +307,15 @@ int main(int argc, char* argv[])
 
   
   // Para medir o tempo de GPU (Guia da NVIDIA: OpenCL_Best_Practices_Guide.pdf (meu diretorio)
+  // O profiling tem que ser depois do envio pra fila
   cl_ulong start, end;
-  cl_event event;
-  /*  clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END,
-			  sizeof(cl_ulong), &end, NULL);
+
   clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
 			  sizeof(cl_ulong), &start, NULL);
+  clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END,
+			  sizeof(cl_ulong), &end, NULL);
   float executionTimeInMilliseconds = (end - start) * 1.0e-6f;
-  */
+  printf("Kernel execution time: %f (ms)\n", executionTimeInMilliseconds);
     
   // Salva imagem stb
   if(stbi_write_png("result.png", w, h, c, arr, 0)==0)
