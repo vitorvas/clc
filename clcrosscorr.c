@@ -18,6 +18,9 @@ int main(int argc, char* argv[])
 {
   int err=0, w=0, h=0;
 
+  // kernel width and height
+  int kx=300, ky=300;
+  
   // Le imagem stb
   size_t c; //components: 3 RGB, 1 Grayscale
 
@@ -38,7 +41,12 @@ int main(int argc, char* argv[])
   //  uint8_t* img = stbi_load(argv[1], &w, &h, NULL, c);
   uint8_t* img = stbi_load(nome, &w, &h, NULL, c);
   uint8_t* arr = malloc(sizeof(uint8_t)*w*h*c);
+  uint8_t* krn = malloc(sizeof(uint8_t)*kx*ky*c);
   //  uint8_t* arr = calloc(w*h*c, sizeof(uint8_t));
+
+  // Populate de created image
+  for(int i=0; i<kx*ky*c; ++i)
+    krn[i] = i%10 ? 255 : i;
   
   // Get device info
   cl_bool res;
@@ -205,7 +213,7 @@ int main(int argc, char* argv[])
   free(str_log);
 
   // Criar o kernel
-  kernel = clCreateKernel(program, "convolution", NULL);
+  kernel = clCreateKernel(program, "convolution2", NULL);
   if(clerr != CL_SUCCESS)
   {
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-3);
@@ -231,6 +239,15 @@ int main(int argc, char* argv[])
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-4);
     exit(0);
   }
+
+  // Cria a imagem kernel
+  cl_mem image_kernel = clCreateImage2D(context, CL_MEM_READ_ONLY,
+					&format, kx, ky, 0, NULL, &clerr);
+  if(clerr != CL_SUCCESS)
+  {
+    printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-4);
+    exit(0);
+   }
 
   // Cria a imagem destino
   cl_mem image_dest = clCreateImage2D(context, CL_MEM_WRITE_ONLY,
@@ -269,7 +286,8 @@ int main(int argc, char* argv[])
   // O kernel já foi criado. Antes de chamar (enqueue) o kernel com as imagens
   // tem que setar os argumentos do kernel.
   clSetKernelArg(kernel, 0, sizeof(cl_mem), &image);
-  clSetKernelArg(kernel, 1, sizeof(cl_mem), &image_dest);
+  clSetKernelArg(kernel, 1, sizeof(cl_mem), &image_kernel);
+  clSetKernelArg(kernel, 2, sizeof(cl_mem), &image_dest);
   if(clerr != CL_SUCCESS)
   {
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-3);
@@ -337,16 +355,19 @@ int main(int argc, char* argv[])
     printf("(E) Erro ao gravar imagem (stbi_write_png(...))\n");
     return -1;
   }
-
+  stbi_write_png("krn.png", kx, ky, c, krn, 0);
+  
   free(buffer[0]);
   
   clReleaseSampler(sampler);
   clReleaseMemObject(image);
+  clReleaseMemObject(image_kernel);
   clReleaseMemObject(image_dest);
   clReleaseCommandQueue(queue);
 
   stbi_image_free(img);
   free(arr);
+  free(krn);
   
   return 0;
 }
