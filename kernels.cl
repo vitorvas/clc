@@ -149,7 +149,7 @@ __kernel void convolution(__read_only image2d_t im, __read_only image2d_t knl,
   
   __private uint tmp;
   //   uint tmp;
-  tmp = 255;
+  tmp = 0;
   /* total[0] = 0; 
      total[1] = 0; 
      total[2] = 0; 
@@ -174,8 +174,9 @@ __kernel void convolution(__read_only image2d_t im, __read_only image2d_t knl,
       // --------------------------
       //
       // O read_imageui chamado no loop é que deixa ultra-lento quando chamo o kernel assim!
-      
       pix = read_imageui(knl, samp, coordtest).w; // Return only one component
+      // Isso aqui deve estar facil estourando o valor máximo pra int. Tenho que mudar pra usar
+      // Normalizado na imagem.
       tmp+=pix*pixel;
     }
   }

@@ -35,8 +35,8 @@ int main(int argc, char* argv[])
   }
   else */
   c=1;
-  // char nome[11]="marble8.png";
-  char nome[16]="probe-double.png";
+  char nome[11]="marble8.png";
+  //  char nome[16]="probe-double.png";
   char nomekrn[7]="krn.png";
   
   // Estruturas de dados para as imagens
@@ -394,6 +394,10 @@ int main(int argc, char* argv[])
 
   int max = -1;
   int pixel = 0;
+
+  // Write the result image before writing the crosscorrelated
+  stbi_write_png("resultim.png", w, h, c, ccvector, 0);
+  
   for(int i=0; i<w*h*c; ++i)
   {
     if(ccvector[i]>max)
@@ -411,7 +415,7 @@ int main(int argc, char* argv[])
   printf("O valor máximo é %d no pixel %d. \n", max, pixel);
 
   // Salva imagem ALTERADA stb - só com o pixel branco da CCR
-  if(stbi_write_png("result.png", w, h, c, ccvector, 0)==0) 
+  if(stbi_write_png("resultcc.png", w, h, c, ccvector, 0)==0) 
    { 
      printf("(E) Erro ao gravar imagem (stbi_write_png(...))\n"); 
      return -1;  
