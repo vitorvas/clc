@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
   int err=0, w=0, h=0;
 
   // kernel width and height
-  int kx=300, ky=300;
+  int kx=0, ky=0;
   
   // Le imagem stb
   size_t c; //components: 3 RGB, 1 Grayscale
@@ -35,18 +35,21 @@ int main(int argc, char* argv[])
   }
   else */
   c=1;
-  char nome[11]="marble8.png";
-
+  // char nome[11]="marble8.png";
+  char nome[16]="probe-double.png";
+  char nomekrn[7]="krn.png";
+  
   // Estruturas de dados para as imagens
   //  uint8_t* img = stbi_load(argv[1], &w, &h, NULL, c);
   uint8_t* img = stbi_load(nome, &w, &h, NULL, c);
   uint8_t* arr = malloc(sizeof(uint8_t)*w*h*c);
-  uint8_t* krn = malloc(sizeof(uint8_t)*kx*ky*c);
+  //  uint8_t* krn = malloc(sizeof(uint8_t)*kx*ky*c);
+  uint8_t* krn = stbi_load(nomekrn, &kx, &ky, NULL, c); // ------------> AQUI! O stbi_load não lê direito a imagem krn. O que ela tem de diferente?
   //  uint8_t* arr = calloc(w*h*c, sizeof(uint8_t));
 
   // Populate de created image
-  for(int i=0; i<kx*ky*c; ++i)
-    krn[i] = i%10 ? 255 : i;
+  //  for(int i=0; i<kx*ky*c; ++i)
+  //    krn[i] = i%10 ? 255 : i;
   
   // Get device info
   cl_bool res;
@@ -158,7 +161,7 @@ int main(int argc, char* argv[])
 
   clock_t t;
   t = clock();
-  clerr = clBuildProgram(program, 0, NULL, "-cl-std=CL1.1", NULL, NULL);
+  clerr = clBuildProgram(program, 0, NULL, "-cl-std=CL1.1 -g -cl-opt-disable", NULL, NULL);
   if(clerr != CL_SUCCESS)
   {
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-3);
@@ -213,7 +216,7 @@ int main(int argc, char* argv[])
   free(str_log);
 
   // Criar o kernel
-  kernel = clCreateKernel(program, "convolution2", NULL);
+  kernel = clCreateKernel(program, "convolution", NULL);
   if(clerr != CL_SUCCESS)
   {
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-3);
@@ -227,12 +230,37 @@ int main(int argc, char* argv[])
   
   //cl_image_desc imdesc;
 
+  // Estruturas de dados para o cálculo da correlação cruzada
+  // O kernel vai devolver um vetor com os valores das somas para a CC em
+  // cada posição da imagem
+  uint8_t* ccvector = NULL;
+  // E se eu não alocar? Mando o clCreate fazer isso
+  // O clCreate não funciona alocando. Tem que fazer malloc mesmo.
+  // So que malloc e calloc(0,...) deixam lixo.
+  // Com calloc 1 ou 255, a imagem fica preta. Toda zerada se eu não mexer no
+  // ccvector mais
+  ccvector = calloc(255, sizeof(uint8_t)*w*h*c);
+  
+  cl_mem clccvector;
+  // CL_MEM_ALLOC_HOST_PTR
+  //clccvector = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(uint8_t)*w*h, ccvector, &clerr);
+  clccvector = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, sizeof(uint8_t)*w*h*c, ccvector, &clerr);
+  //clccvector = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(uint8_t)*w*h*c, NULL, &clerr);
+
+  if(clerr != CL_SUCCESS)
+  {
+    printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-3);
+    exit(0);
+  }
+
+
   // Não implementado na versão do OpenCL do Cochon
   // FUNCIONA a linha abaixo. O problema era: CL_MEM_USE_HOST_PTR. Passei para COPY em USE e deu
   // CL_MEM_READ_WRITE e CL_MEM_READ_ONLY funcionam, ambos.
   // Não funciona compilando com o clang, só com o gcc. Com os mesmos parâmetros.
   cl_mem image = clCreateImage2D(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-				 &format, w, h, w*sizeof(uint8_t), (void*)img, &clerr);
+				 &format, w, h, c*w*sizeof(uint8_t), (void*)img, &clerr);
+  // ERRO! POR QUE??? &format, kx, ky, c*kx*sizeof(uint8_t), (void*)krn, &clerr);
   
   if(clerr != CL_SUCCESS)
   {
@@ -241,23 +269,24 @@ int main(int argc, char* argv[])
   }
 
   // Cria a imagem kernel
-  cl_mem image_kernel = clCreateImage2D(context, CL_MEM_READ_ONLY,
-					&format, kx, ky, 0, NULL, &clerr);
-  if(clerr != CL_SUCCESS)
-  {
-    printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-4);
-    exit(0);
-   }
-
-  // Cria a imagem destino
-  cl_mem image_dest = clCreateImage2D(context, CL_MEM_WRITE_ONLY,
-				      &format, w, h, 0, NULL, &clerr);
-  //  				      &format, w, h, w*sizeof(uint8_t), NULL, &clerr);
-  if(clerr != CL_SUCCESS)
+  cl_mem image_kernel = clCreateImage2D(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+					//    					&format, kx, ky, c*kx*sizeof(uint8_t), (void*)krn, &clerr);
+  				 &format, w, h, c*w*sizeof(uint8_t), (void*)img, &clerr);
+					if(clerr != CL_SUCCESS)
   {
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-4);
     exit(0);
   }
+
+  // Cria a imagem destino
+  //  cl_mem image_dest = clCreateImage2D(context, CL_MEM_WRITE_ONLY,
+  //				      &format, w, h, 0, NULL, &clerr);
+  //  				      &format, w, h, w*sizeof(uint8_t), NULL, &clerr);
+  //  if(clerr != CL_SUCCESS)
+  //  {
+  //    printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-4);
+  //    exit(0);
+  //  }
   
   // Criar um cl_sampler (pag 125 do livro) de teste
   // clCreateSampler tá descontinuado desde a versao 2.0 do OpenCl. Usar clCreateSamplerWithProperties
@@ -286,8 +315,10 @@ int main(int argc, char* argv[])
   // O kernel já foi criado. Antes de chamar (enqueue) o kernel com as imagens
   // tem que setar os argumentos do kernel.
   clSetKernelArg(kernel, 0, sizeof(cl_mem), &image);
-  clSetKernelArg(kernel, 1, sizeof(cl_mem), &image_kernel);
-  clSetKernelArg(kernel, 2, sizeof(cl_mem), &image_dest);
+  //  clSetKernelArg(kernel, 1, sizeof(cl_mem), &image_kernel);
+  clSetKernelArg(kernel, 1, sizeof(cl_mem), &image);
+  //  clSetKernelArg(kernel, 2, sizeof(cl_mem), &image_dest);
+  clSetKernelArg(kernel, 2, sizeof(cl_mem), &clccvector);
   if(clerr != CL_SUCCESS)
   {
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-3);
@@ -297,14 +328,15 @@ int main(int argc, char* argv[])
   /*------ IMPORTANTE: o clEnqueueTask está deprecado e é tosco: chama
     com workgroup 1, sem ser pararlelo. Nao faz sentido usá-lo.
     clerr = clEnqueueTask(queue, kernel, 0, NULL, NULL);*/
-  uint8_t workdim = w*h*c;
-  //size_t work_dim[] = {w*h*c, 0, 0};
-  size_t work_dim[] = {w, h, 1};
+  uint8_t worksize = w*h*c;
+  //size_t work_size[] = {w*h*c, 0, 0};
+  size_t work_size[] = {w, h, 1};
 
   // O cl_event é iniciado aqui, mas é parte da estrutura para fazer o profiling
   cl_event event;
 
-  clerr = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, work_dim, NULL, 0, NULL, &event);
+  // o work-size é 1 (tercerio argumento) porque sao imagens?
+  clerr = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, work_size, NULL, 0, NULL, &event);
   if(clerr != CL_SUCCESS)
   {
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-3);
@@ -331,8 +363,8 @@ int main(int argc, char* argv[])
   //  clerr = clEnqueueReadBuffer();
   cl_bool b = CL_TRUE;
   size_t origin[] = {0,0,0};
-  //  clerr = clEnqueueReadImage(queue, image_dest, f, origin, work_dim, w*sizeof(uint8_t), 0, arr, 0, NULL, NULL);
-  clerr = clEnqueueReadImage(queue, image_dest, b, origin, work_dim, 0, 0, arr, 0, NULL, &event);
+  //  clerr = clEnqueueReadImage(queue, image_dest, f, origin, work_size, w*sizeof(uint8_t), 0, arr, 0, NULL, NULL);
+  // clerr = clEnqueueReadImage(queue, image_dest, b, origin, work_size, 0, 0, arr, 0, NULL, &event);
   if(clerr != CL_SUCCESS)
   {
     printf(" ---- CL Error: %s (line %d)\n", clGetErrorString(clerr), __LINE__-3);
@@ -348,26 +380,56 @@ int main(int argc, char* argv[])
 			  sizeof(cl_ulong), &end, NULL);
   executionTimeInMilliseconds = (end - start) * 1.0e-6f;
   printf("clEnqueueReadImage execution time: %f (ms)\n", executionTimeInMilliseconds);
-    
-  // Salva imagem stb
-  if(stbi_write_png("result.png", w, h, c, arr, 0)==0)
+
+  // IMPORTANT
+  // ---------
+
+  // se eu mando ler o buffer com o clEnqueue eu "travo" minha variável! Debugando eu não consigo
+  // mais acessá-la.
+
+  
+  // Check what we get from the kernel
+  //  clEnqueueReadBuffer(queue, clccvector, CL_TRUE, 0, sizeof(uint8_t*)*w*h*c, &ccvector, 0, NULL, NULL);
+  //  clEnqueueReadBuffer(queue, clccvector, CL_TRUE, 0, sizeof(uint), &ccvector, 0, NULL, NULL);
+
+  int max = -1;
+  int pixel = 0;
+  for(int i=0; i<w*h*c; ++i)
   {
-    printf("(E) Erro ao gravar imagem (stbi_write_png(...))\n");
-    return -1;
+    if(ccvector[i]>max)
+    {
+      max=ccvector[i];
+      pixel=i;
+    }
+    ccvector[i] = 0;
+    //    printf("%d ", ccvector[i]);
   }
-  stbi_write_png("krn.png", kx, ky, c, krn, 0);
+  ccvector[pixel]=255;
   
-  free(buffer[0]);
-  
+  //printf("\n");
+  printf("Imagem %dx%d\n", w, h);
+  printf("O valor máximo é %d no pixel %d. \n", max, pixel);
+
+  // Salva imagem ALTERADA stb - só com o pixel branco da CCR
+  if(stbi_write_png("result.png", w, h, c, ccvector, 0)==0) 
+   { 
+     printf("(E) Erro ao gravar imagem (stbi_write_png(...))\n"); 
+     return -1;  
+   }  
+  //stbi_write_png("krnresult.png", kx, ky, c, krn, 0); 
+
+    
   clReleaseSampler(sampler);
   clReleaseMemObject(image);
-  clReleaseMemObject(image_kernel);
-  clReleaseMemObject(image_dest);
+  //clReleaseMemObject(image_kernel);
+  //  clReleaseMemObject(image_dest);
+  clReleaseMemObject(clccvector);
   clReleaseCommandQueue(queue);
 
   stbi_image_free(img);
-  free(arr);
-  free(krn);
+  stbi_image_free(krn);
+  //  free(arr);
+  free(ccvector);
   
   return 0;
 }
