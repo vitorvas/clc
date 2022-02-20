@@ -126,7 +126,12 @@ __kernel void convolution(__read_only image2d_t im, __read_only image2d_t knl,
   // adapt the "pitch" for the loop
   // If the kernel is even, the operation will be biased
   // i.e., more neighbours on the right side will be taken in account
-  
+   uint px = 0;
+   uint py = 0;
+
+   px = get_image_width(im)/get_global_size(0);
+   py = get_image_height(im)/get_global_size(1);
+   
    uint dx = 0; 
    uint dy = 0; 
 
@@ -166,8 +171,9 @@ __kernel void convolution(__read_only image2d_t im, __read_only image2d_t knl,
     //    for(int j=0; j<5; j++)
     {
       // Tem que usar read_image_ui pra ler as posições na knl
-      coordtest=(int2)(get_global_id(0)+i-dx, get_global_id(1)+j-dy);
-      //      coordtest=(int2)(get_global_id(0)+i-2, get_global_id(1)+j-2);
+      //    coordtest=(int2)(get_global_id(0)+i-dx, get_global_id(1)+j-dy);
+      //    coordtest=(int2)(get_global_id(0)*px, get_global_id(1)*py); //(sem o loop)
+      coordtest=(int2)(get_global_id(0)*px+i-dx, get_global_id(1)*py+j-dy);
       // Accumulate
       //
       // IMPORTANT
@@ -178,10 +184,14 @@ __kernel void convolution(__read_only image2d_t im, __read_only image2d_t knl,
       // Isso aqui deve estar facil estourando o valor máximo pra int. Tenho que mudar pra usar
       // Normalizado na imagem.
       tmp+=pix*pixel;
+      //tmp = pix;
     }
   }
   //vec[coordtest[0]+(pitch)*coordtest[1]]=total[0];
-  vec[get_global_id(1)*pitch+get_global_id(0)]= tmp/(knl_width*knl_height);
+      //      vec[get_global_id(1)*pitch+get_global_id(0)]= tmp; //tmp/(knl_width*knl_height);
+  vec[(get_global_id(1)*py*pitch)+(get_global_id(0)*px)]=  tmp/(knl_width*knl_height);
+  //  printf("%.2f ", tmp);
+
 }
 
 /**

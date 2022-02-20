@@ -97,7 +97,13 @@ int main(int argc, char* argv[])
   printf("Device name: %s\n", &devname);
   cl_image_format format;
   format.image_channel_order = CL_A; // o Cochon só aceita CL_A, CL_RGBA, CL_ARGB, CL_BGRA
+  //  format.image_channel_data_type = CL_UNORM_INT8;//CL_UNSIGNED_INT8;
   format.image_channel_data_type = CL_UNSIGNED_INT8;
+
+  // Get printf information
+  size_t siz = 0;
+  clGetDeviceInfo(device, CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE, sizeof(size_t), &siz, NULL);
+  //clGetDeviceInfo(device, CL_DEVICE_PRINTF_BUFFER_SIZE, sizeof(size_t), siz, NULL); // Não tem o PRINTF
 
   // Ver os formatos de imagem suportados
   /*  cl_image_format formlist[30];
@@ -328,14 +334,25 @@ int main(int argc, char* argv[])
   /*------ IMPORTANTE: o clEnqueueTask está deprecado e é tosco: chama
     com workgroup 1, sem ser pararlelo. Nao faz sentido usá-lo.
     clerr = clEnqueueTask(queue, kernel, 0, NULL, NULL);*/
-  uint8_t worksize = w*h*c;
-  //size_t work_size[] = {w*h*c, 0, 0};
-  size_t work_size[] = {w, h, 1};
 
+  /*------ IMPORTANTE2: o work_size determina o tamanho do meu "loop" 
+    no kernel. A minha ideia é conseguir fazer um loop menor mas com
+    "pitches" entre os indices. Ainda a ver como fazer.
+    
+    Talvez usar buffers seja a solucao ao inves de imagens. Vou tentar usar 
+    imagens pois é a estrutura de dados que melhor representa meus dados, que 
+    são... imagens.*/
+  
+  //size_t work_size[] = {w*h*c, 0, 0}; // Para ser usado com index em uma dimensao
+  size_t work_size[] = {w/16, h/16, 1};
+  size_t work_offset[] = {0, 0, 0};
+  size_t local_work_size[] = {4, 4, 0};
+  
   // O cl_event é iniciado aqui, mas é parte da estrutura para fazer o profiling
   cl_event event;
 
   // o work-size é 1 (tercerio argumento) porque sao imagens?
+  //  clerr = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, work_size, NULL, 0, NULL, &event);
   clerr = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, work_size, NULL, 0, NULL, &event);
   if(clerr != CL_SUCCESS)
   {
